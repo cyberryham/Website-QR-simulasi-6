@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Kehadiran Siswa</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #121212;
+            color: #fff;
+            margin: 0;
+            padding: 20px;
+            text-align: center;
+        }
+
+        h1, h2 {
+            color: #1f8ef1;
+            margin-bottom: 10px;
+        }
+
+        table {
+            width: 100%;
+            max-width: 800px;
+            margin: 20px auto;
+            border-collapse: collapse;
+            background-color: #1f1f1f;
+        }
+
+        th, td {
+            border: 1px solid #444;
+            padding: 10px;
+            text-align: left;
+        }
+
+        th {
+            background-color: #1f8ef1;
+            color: #fff;
+        }
+
+        td.status {
+            text-align: center;
+            font-weight: bold;
+        }
+
+        .btn {
+            background-color: #1f8ef1;
+            color: #fff;
+            padding: 10px 20px;
+            font-size: 1em;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-top: 15px;
+            margin-right: 10px;
+            transition: background-color 0.3s ease;
+        }
+
+        .btn:hover {
+            background-color: #106ab3;
+        }
+
+        #scanner-container {
+            position: relative;
+            width: 90%;
+            max-width: 500px;
+            margin: 20px auto;
+            aspect-ratio: 1 / 1;
+            background-color: #000;
+            border-radius: 20px;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #scanner-container video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        #result {
+            margin: 10px 0;
+            font-size: 1.2em;
+        }
+    </style>
+</head>
+<body>
+    <h1>Dashboard Kehadiran Siswa</h1>
+
+    <!-- Pemindai QR Code -->
+    <div id="scanner-container">
+        <video id="video"></video>
+    </div>
+    <div id="result">Pemindai belum berjalan.</div>
+    <button class="btn" onclick="startScanner()">Mulai Pemindai</button>
+    <input type="file" id="file-input" accept="image/*" class="btn" onchange="handleImageUpload(event)" />
+    <button class="btn" onclick="checkTidakHadir()">Periksa Tidak Hadir</button>
+
+    <!-- Tabel Kehadiran -->
+    <h2>Daftar Kehadiran Siswa</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Nama</th>
+                <th>ID Siswa</th>
+                <th>Status</th>
+                <th>Waktu</th>
+            </tr>
+        </thead>
+        <tbody id="siswa-tbody"></tbody>
+    </table>
+
+    <script src="https://cdn.jsdelivr.net/npm/jsqr/dist/jsQR.js"></script>
+    <script>
+        // Data siswa
+        const siswa = {
+            "8227": "Denis",
+            "1234": "M. Hamzah",
+            "2772": "Alwi",
+            "6225": "Salwa",
+            "8383": "Bangbang"
+        };
+
+        const scannedIDs = new Set(); // Menyimpan ID yang sudah dipindai
+
+        // Inisialisasi tabel siswa
+        function initializeTable() {
+            const tbody = document.getElementById("siswa-tbody");
+            for (const [id, nama] of Object.entries(siswa)) {
+                const row = document.createElement("tr");
+                row.setAttribute("data-id", id); // Tambahkan atribut ID
+                row.innerHTML = `
+                    <td>${nama}</td>
+                    <td>${id}</td>
+                    <td class="status">Tidak Ada</td>
+                    <td class="waktu">-</td>
+                `;
+                tbody.appendChild(row);
+            }
+        }
+
+        // Pemindai QR Code
+        const videoElement = document.getElementById("video");
+        const resultElement = document.getElementById("result");
+
+        async function startScanner() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+                videoElement.srcObject = stream;
+                videoElement.setAttribute("playsinline", true);
+                videoElement.play();
+                scanQRCodeFromVideo();
+                resultElement.textContent = "Arahkan kamera ke QR Code.";
+            } catch (error) {
+                resultElement.textContent = "Tidak dapat memulai kamera.";
+            }
+        }
+
+        function scanQRCodeFromVideo() {
+            const canvasElement = document.createElement("canvas");
+            const canvas = canvasElement.getContext("2d");
+
+            function drawFrame() {
+                if (videoElement.videoWidth === 0 || videoElement.videoHeight === 0) {
+                    requestAnimationFrame(drawFrame);
+                    return;
+                }
+
+                canvasElement.width = videoElement.videoWidth;
+                canvasElement.height = videoElement.videoHeight;
+                canvas.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
+
+                const imageData = canvas.getImageData(0, 0, canvasElement.width, canvasElement.height);
+                const code = jsQR(imageData.data, canvasElement.width, canvasElement.height, { inversionAttempts: "dontInvert" });
+
+                if (code) {
+                    const scannedID = code.data.trim();
+                    handleQRCodeResult(scannedID);
+                }
+                requestAnimationFrame(drawFrame);
+            }
+
+            drawFrame();
+        }
+
+        // Pemindai QR Code dari gambar
+        function handleImageUpload(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    const img = new Image();
+                    img.onload = function () {
+                        const canvasElement = document.createElement("canvas");
+                        const canvas = canvasElement.getContext("2d");
+                        canvasElement.width = img.width;
+                        canvasElement.height = img.height;
+                        canvas.drawImage(img, 0, 0, img.width, img.height);
+
+                        const imageData = canvas.getImageData(0, 0, img.width, img.height);
+                        const code = jsQR(imageData.data, img.width, img.height, { inversionAttempts: "dontInvert" });
+
+                        if (code) {
+                            handleQRCodeResult(code.data.trim());
+                        } else {
+                            resultElement.textContent = "QR Code tidak dapat dideteksi dalam gambar.";
+                        }
+                    };
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        // Proses QR Code
+        function handleQRCodeResult(id) {
+            if (scannedIDs.has(id)) {
+                resultElement.textContent = `ID ${id} sudah dipindai sebelumnya!`;
+                return;
+            }
+
+            if (siswa[id]) {
+                resultElement.textContent = `Hasil Pemindaian: ${siswa[id]}`;
+                const row = document.querySelector(`tr[data-id="${id}"]`);
+                if (row) {
+                    row.querySelector(".status").textContent = "Hadir";
+                    row.querySelector(".waktu").textContent = new Date().toLocaleString();
+                }
+                scannedIDs.add(id);
+            } else {
+                resultElement.textContent = `ID ${id} tidak dikenal!`;
+            }
+        }
+
+        // Periksa Tidak Hadir
+        function checkTidakHadir() {
+            const rows = document.querySelectorAll("tbody tr");
+            rows.forEach(row => {
+                const id = row.getAttribute("data-id");
+                if (!scannedIDs.has(id)) {
+                    row.querySelector(".status").textContent = "Tidak Hadir";
+                }
+            });
+        }
+
+        // Inisialisasi tabel saat halaman dimuat
+        window.onload = initializeTable;
+    </script>
+</body>
+</html>
